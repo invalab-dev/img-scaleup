@@ -49,7 +49,7 @@ jobs:
           source: "./release.zip"
           target: "~"
 
-      - name: Cleanup and unzip and move files
+      - name: Unzip and move files
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -57,8 +57,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             mkdir -p img-scaleup
-            rm -rf ./img-scaleup
-            unzip release.zip -d ./img-scaleup
+            unzip -o release.zip -d ./img-scaleup
             rm release.zip
             mv -f ./img-scaleup/img-scaleup-celery.service /etc/systemd/system
             mv -f ./img-scaleup/img-scaleup-uvicorn.service /etc/systemd/system
