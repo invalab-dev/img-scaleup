@@ -1,16 +1,12 @@
-from threading import Lock
-from collections import defaultdict
+import redis, json
 
+r = redis.StrictRedis(host='localhost', port=6379, db=2, decode_responses=True)
 
-jobs = {}
-key_locks = defaultdict(Lock)
+# 5분(300초) 후 제거 → 파일 다운로드 기능 등 제한
+def redis_write(key, value, ex=300):
+    # value는 직렬화 가능한 dict
+    r.set(key, json.dumps(value), ex=ex)
 
-def safe_write(key, value):
-    lock = key_locks[key]
-    with lock:
-        jobs[key] = value
-
-def safe_read(key):
-    lock = key_locks[key]
-    with lock:
-        return jobs.get(key)
+def redis_read(key):
+    s = r.get(key)
+    return json.loads(s) if s else None

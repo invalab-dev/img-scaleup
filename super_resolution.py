@@ -15,7 +15,7 @@ from rasterio.transform import Affine
 from realesrgan import RealESRGANer
 from basicsr.archs.rrdbnet_arch import RRDBNet
 
-from jobs import jobs, safe_write, safe_read
+from jobs import redis_read, redis_write
 
 
 
@@ -77,10 +77,11 @@ def run_super_resolution(input_path,
     try:
         def update_progress(p, status=None):
             p = max(0, min(100, int(p)))
-            job = safe_read(task_id)
+            job = redis_read(task_id)
             job["progress"] = p
             job["status"] = status
             print(f"update_progress: {task_id} / {p} / {status}")
+            redis_write(task_id, job)
 
         update_progress(0, status="checking")
 
@@ -104,7 +105,7 @@ def run_super_resolution(input_path,
         )
 
         # GPU 사용 여부 확인
-        check_gpu_use(model)
+        # check_gpu_use(model)
 
         if use_memmap:
             memmap_path = os.path.join(output_dir, 'temp_memmap.dat')
@@ -134,7 +135,7 @@ def run_super_resolution(input_path,
                 with torch.no_grad(), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                     sr_bgr, _ = model.enhance(tile_bgr, outscale=scale)
                     # GPU 사용 여부 확인
-                    check_gpu_use(model)    
+                    # check_gpu_use(model)    
                 sr_rgb = cv2.cvtColor(sr_bgr, cv2.COLOR_BGR2RGB)
                 y2, x2 = y * scale, x * scale
                 out[y2:y2 + sr_rgb.shape[0], x2:x2 + sr_rgb.shape[1], :] = sr_rgb
@@ -169,21 +170,11 @@ def run_super_resolution(input_path,
 
     except Exception as e:
         if task_id:
-            job = safe_read(task_id)
+            job = redis_read(task_id)
             job["progress"] = -1
             job["status"] = "error"
+            redis_write(task_id, job)
         raise RuntimeError(f"[SR 오류] {str(e)}")
 
 # GPU 워커에서 사용하는 함수명 그대로 유지
 run_super_resolution_gpu = run_super_resolution
-
-def check_gpu_use(model):
-    print("CUDA available:", torch.cuda.is_available())
-    if torch.cuda.is_available():
-        try:
-            # RealESRGANer 내부 모델 참조 시도 (라이브러리에 따라 속성명 다를 수 있음)
-            core_model = getattr(model, 'model', getattr(model, 'net', model))
-            param = next(core_model.parameters())
-            print("model param device:", param.device)
-        except Exception as e:
-            print("모델 파라미터 디바이스 확인 실패:", e)

@@ -1,0 +1,17 @@
+[Unit]
+Description=Run img-scaleup-celery
+PartOf=img-scaleup.service
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root/img-scaleup
+Environment=PATH=/root/img-scaleup/venv/bin
+Environment=PYTHONPATH=/root/img-scaleup
+Environment=CUDA_VISIBLE_DEVICES=0
+ExecStart=/root/img-scaleup/venv/bin/celery -A tasks.celery worker -Q gpu -c 1 -n gpu_worker@%h
+Restart=on-failure
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

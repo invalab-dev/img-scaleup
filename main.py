@@ -10,8 +10,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from super_resolution import run_super_resolution
-from jobs import jobs, safe_write, safe_read
+from jobs import redis_write, redis_read
+from tasks import sr_task
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -43,40 +43,28 @@ async def upload_file(
 ):
     try:
         task_id = uuid.uuid4().hex
-        filename = f"{task_id}_{file.filename}"
-        file_path = os.path.join(UPLOAD_DIR, filename)
+        upload_path = os.path.join(UPLOAD_DIR, f"{task_id}_{file.filename}")
 
-        with open(file_path, 'wb') as f:
+        with open(upload_path, 'wb') as f:
             f.write(await file.read())
-
-        safe_write(task_id, {
-            "filename": filename,
-            "file_path": file_path,
-            "progress": 0,
-            "status": "checking"
-        })
-
-        print(f"task_id: {task_id}")
-
-        out_name = run_super_resolution(
-                    input_path=file_path,
-                    output_dir=RESULT_DIR,
-                    scale=4,
-                    tile_size=512,
-                    tile_pad=64,
-                    use_memmap=False,
-                    task_id=task_id
-        )
-
-        return JSONResponse(content={"success": True, "task_id": task_id})
-    
     except Exception as e:
-        logging.exception("Upload failed")
+        logging.exception("upload failed")
         return JSONResponse(status_code=500, content={"success": False, "task_id": None})
+    
+    result = sr_task.apply_async(args=[upload_path, RESULT_DIR, 4, 512, 64, False, task_id], queue='gpu')
+    
+    redis_write(task_id, {
+        "file_path": upload_path,
+        "progress": 0,
+        "status": "checking"
+    })
+    
+    return JSONResponse(content={"success": True, "task_id": task_id})
+
 
 @app.get("/progress/{task_id}")
 def check_progress(task_id: str):
-    job = safe_read(task_id)
+    job = redis_read(task_id)
     progress = job["progress"]
     status = job["status"]
     filename = job["filename"]
@@ -86,8 +74,6 @@ def check_progress(task_id: str):
             if f.startswith(f"SR_{task_id}_"):
                 filename = f
                 status = "done"
-                # 5분(300초) 후 파일 다운로드 기능 제거 (jobs 메모리 점유 증가 제한)
-                Timer(300, lambda: safe_write(task_id, None))
                 break
         else:
             status = "finishing"
