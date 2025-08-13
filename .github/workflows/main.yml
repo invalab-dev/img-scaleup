@@ -60,9 +60,9 @@ jobs:
             rm -rf ./img-scaleup
             unzip release.zip -d ./img-scaleup
             rm release.zip
-            mv -f img-scaleup-celery.service /etc/systemd/system
-            mv -f img-scaleup-uvicorn.service /etc/systemd/system
-            mv -f img-scaleup.service /etc/systemd/system
+            mv -f ./img-scaleup/img-scaleup-celery.service /etc/systemd/system
+            mv -f ./img-scaleup/img-scaleup-uvicorn.service /etc/systemd/system
+            mv -f ./img-scaleup/img-scaleup.service /etc/systemd/system
 
       - name: Restart systemd service
         uses: appleboy/ssh-action@v1.0.3
