@@ -67,7 +67,7 @@ def save_final_image_with_metadata(input_tif, result_array, output_tif):
             for i in range(3):
                 dst.write(result_array[:, :, i], i + 1)
 
-def run_super_resolution(input_path,
+def run_super_resolution(upload_path,
                          output_dir,
                          scale=4,
                          tile_size=512,
@@ -85,7 +85,7 @@ def run_super_resolution(input_path,
 
         update_progress(0, status="checking")
 
-        img_bgr = load_image(input_path)
+        img_bgr = load_image(upload_path)
         H, W = img_bgr.shape[:2]
         H2, W2 = int(H * scale), int(W * scale)
 
@@ -103,9 +103,6 @@ def run_super_resolution(input_path,
             half=False,
             device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
         )
-
-        # GPU 사용 여부 확인
-        # check_gpu_use(model)
 
         if use_memmap:
             memmap_path = os.path.join(output_dir, 'temp_memmap.dat')
@@ -151,22 +148,20 @@ def run_super_resolution(input_path,
 
         update_progress(99, status="finishing")
 
-        tag = task_id or datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = os.path.basename(input_path)
-        out_name = f"SR_{tag}_{filename}"
-        out_path = os.path.join(output_dir, out_name)
+        filename = os.path.basename(upload_path)
+        result_path = os.path.join(output_dir, filename)
 
-        if input_path.lower().endswith(".tif") or input_path.lower().endswith(".tiff"):
-            save_final_image_with_metadata(input_path, out, out_path)
+        if upload_path.lower().endswith(".tif") or upload_path.lower().endswith(".tiff"):
+            save_final_image_with_metadata(upload_path, out, result_path)
         else:
-            save_final_image(out, out_path)
+            save_final_image(out, result_path)
 
         if use_memmap and os.path.exists(memmap_path):
             os.remove(memmap_path)
 
         update_progress(100, status="done")
 
-        return os.path.basename(out_path)
+        return os.path.basename(result_path)
 
     except Exception as e:
         if task_id:

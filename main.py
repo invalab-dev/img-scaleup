@@ -67,20 +67,20 @@ def check_progress(task_id: str):
     job = redis_read(task_id)
     progress = job["progress"]
     status = job["status"]
-    filename = job["filename"]
 
-    if progress >= 100 and not filename:
-        for f in os.listdir(RESULT_DIR):
-            if f.startswith(f"SR_{task_id}_"):
-                filename = f
-                status = "done"
+    if progress >= 100:
+        # results 폴더에 결과 파일이 있는지에 따른 status 업데이트
+        for file in os.listdir(RESULT_DIR):
+            filename = os.path.basename(os.path.abspath(file))
+            if filename.startswith(f"{task_id}_"):
+                job["status"] = status = "done"
                 break
         else:
-            status = "finishing"
-
+            job["status"] = status = "finishing"
+        redis_write(task_id, job)
+        
     return {
         "progress": progress,
-        "filename": filename,
         "status": status
     }
 
