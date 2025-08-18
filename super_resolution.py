@@ -8,7 +8,6 @@ import time
 from PIL import Image
 from tqdm import tqdm
 import math
-import datetime
 import rasterio
 from rasterio.transform import Affine
 
@@ -16,7 +15,6 @@ from realesrgan import RealESRGANer
 from basicsr.archs.rrdbnet_arch import RRDBNet
 
 from jobs import redis_read, redis_write, redis_delete
-
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -67,25 +65,26 @@ def save_final_image_with_metadata(input_tif, result_array, output_tif):
             for i in range(3):
                 dst.write(result_array[:, :, i], i + 1)
 
-def run_super_resolution(upload_path,
-                         output_dir,
-                         scale=4,
-                         tile_size=512,
-                         tile_pad=64,
-                         use_memmap=False,
-                         task_id=None):
+def run_super_resolution(
+    filename,
+    input_path,
+    tmp_dir,
+    scale=4,
+    tile_size=512,
+    tile_pad=64,
+    use_memmap=False):
     try:
         def update_progress(p, status=None):
             p = max(0, min(100, int(p)))
-            job = redis_read(task_id)
+            job = redis_read(filename)
             job["progress"] = p
             job["status"] = status
-            print(f"update_progress: {task_id} / {p} / {status}")
-            redis_write(task_id, job)
+            print(f"update_progress: {filename} / {p} / {status}")
+            redis_write(filename, job)
 
         update_progress(0, status="checking")
 
-        img_bgr = load_image(upload_path)
+        img_bgr = load_image(input_path)
         H, W = img_bgr.shape[:2]
         H2, W2 = int(H * scale), int(W * scale)
 
@@ -105,7 +104,7 @@ def run_super_resolution(upload_path,
         )
 
         if use_memmap:
-            memmap_path = os.path.join(output_dir, 'temp_memmap.dat')
+            memmap_path = os.path.join(tmp_dir, 'temp_memmap.dat')
             if os.path.exists(memmap_path):
                 os.remove(memmap_path)
             out = np.memmap(memmap_path, dtype='uint8', mode='w+', shape=(H2, W2, 3))
@@ -146,25 +145,23 @@ def run_super_resolution(upload_path,
 
         update_progress(99, status="finishing")
 
-        filename = os.path.basename(upload_path)
-        result_path = os.path.join(output_dir, filename)
+        output_path = os.path.join(BASE_DIR, "outputs", filename)
 
-        if upload_path.lower().endswith(".tif") or upload_path.lower().endswith(".tiff"):
-            save_final_image_with_metadata(upload_path, out, result_path)
+        if filename.lower().endswith(".tif") or filename.lower().endswith(".tiff"):
+            save_final_image_with_metadata(input_path, out, output_path)
         else:
-            save_final_image(out, result_path)
+            save_final_image(out, output_path)
 
         if use_memmap and os.path.exists(memmap_path):
             os.remove(memmap_path)
 
         update_progress(100, status="done")
-        redis_delete(task_id)
 
-        return os.path.basename(result_path)
+        return output_path
 
     except Exception as e:
-        if task_id:
-            redis_delete(task_id, ex=0)  # 즉시 삭제
+        if filename:
+            redis_delete(filename, ex=0)  # 즉시 삭제
         raise RuntimeError(f"[SR 오류] {str(e)}")
 
 # GPU 워커에서 사용하는 함수명 그대로 유지

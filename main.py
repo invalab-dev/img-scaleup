@@ -4,18 +4,22 @@ import logging
 from datetime import datetime
 from threading import Lock, Timer
 from time import time
+import boto3
+from dotenv import load_dotenv
+import io
+import shutil
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Form, BackgroundTasks
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from jobs import redis_write, redis_read, redis_delete
+from jobs import redis_write, redis_read
 from tasks import sr_task
 
+load_dotenv()
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-RESULT_DIR = os.path.join(BASE_DIR, "results")
 
 app = FastAPI()
 
@@ -37,39 +41,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.post("/upload")
-async def upload_file(
-    file: UploadFile = File(...)
-):
-    try:
-        task_id = uuid.uuid4().hex
-        upload_path = os.path.join(UPLOAD_DIR, f"{task_id}_{file.filename}")
 
-        with open(upload_path, 'wb') as f:
-            f.write(await file.read())
+s3_client = boto3.client(
+    's3',
+    endpoint_url=os.getenv('NAVER_OBJECT_STORAGE_ENDPOINT'),
+    region_name=os.getenv('NAVER_OBJECT_STORAGE_REGION'),
+    aws_access_key_id=os.getenv('NAVER_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.getenv('NAVER_SECRET_KEY'),
+)
+
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    try:
+        filename = file.name
+        tmp_dir = os.path.join(BASE_DIR, "tmp")
+        input_path = os.path.join(tmp_dir, "inputs", filename)
+
+        with open(input_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        s3_client.upload_file(input_path, "img-scaleup", f"inputs/{filename}")
+
     except Exception as e:
-        logging.exception("upload failed")
-        return JSONResponse(status_code=500, content={"success": False, "task_id": None})
+        logging.exception("file upload is failed")
+        return JSONResponse(status_code=500, content={"success": False, "filename": filename})
     
-    result = sr_task.apply_async(args=[upload_path, RESULT_DIR, 4, 512, 64, False, task_id], queue='gpu')
+    sr_task.apply_async(args=[filename, input_path, tmp_dir, 4, 512, 64, False])
     
-    redis_write(task_id, {
+    redis_write(filename, {
         "progress": 0,
         "status": "checking"
     })
     
-    return JSONResponse(content={"success": True, "task_id": task_id})
+    return JSONResponse(content={"success": True, "filename": filename})
 
-
-@app.get("/progress/{task_id}")
-def check_progress(task_id: str):
-    job = redis_read(task_id)
+@app.get("/progress/{filename}")
+async def check_progress(filename: str):
+    job = redis_read(filename)
 
     if job is None:
         return {
             "progress": -1,
             "status": "error",
-            "description": f"{task_id} is not valid or throws error in super_resolution.py"
+            "description": f"{filename} is not valid or throws error in super_resolution.py"
         }
 
     return {
@@ -77,21 +91,3 @@ def check_progress(task_id: str):
         "status": job["status"],
         "description": None
     }
-
-    # if progress >= 100:
-    #     # results 폴더에 결과 파일이 있는지에 따른 status 업데이트
-    #     for file in os.listdir(RESULT_DIR):
-    #         filename = os.path.basename(os.path.abspath(file))
-    #         if filename.startswith(f"{task_id}_"):
-    #             job["status"] = status = "done"
-    #             break
-    #     else:
-    #         job["status"] = status = "finishing"
-    #     redis_write(task_id, job)
-
-@app.get("/results/{filename}")
-def get_result(filename: str):
-    file_path = os.path.join(RESULT_DIR, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path)
