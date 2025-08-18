@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from jobs import redis_write, redis_read
+from jobs import redis_write, redis_read, redis_delete
 from tasks import sr_task
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +54,6 @@ async def upload_file(
     result = sr_task.apply_async(args=[upload_path, RESULT_DIR, 4, 512, 64, False, task_id], queue='gpu')
     
     redis_write(task_id, {
-        "file_path": upload_path,
         "progress": 0,
         "status": "checking"
     })
@@ -65,24 +64,30 @@ async def upload_file(
 @app.get("/progress/{task_id}")
 def check_progress(task_id: str):
     job = redis_read(task_id)
-    progress = job["progress"]
-    status = job["status"]
 
-    if progress >= 100:
-        # results 폴더에 결과 파일이 있는지에 따른 status 업데이트
-        for file in os.listdir(RESULT_DIR):
-            filename = os.path.basename(os.path.abspath(file))
-            if filename.startswith(f"{task_id}_"):
-                job["status"] = status = "done"
-                break
-        else:
-            job["status"] = status = "finishing"
-        redis_write(task_id, job)
-        
+    if job is None:
+        return {
+            "progress": -1,
+            "status": "error",
+            "description": f"{task_id} is not valid or throws error in super_resolution.py"
+        }
+
     return {
-        "progress": progress,
-        "status": status
+        "progress": job["progress"],
+        "status": job["status"],
+        "description": None
     }
+
+    # if progress >= 100:
+    #     # results 폴더에 결과 파일이 있는지에 따른 status 업데이트
+    #     for file in os.listdir(RESULT_DIR):
+    #         filename = os.path.basename(os.path.abspath(file))
+    #         if filename.startswith(f"{task_id}_"):
+    #             job["status"] = status = "done"
+    #             break
+    #     else:
+    #         job["status"] = status = "finishing"
+    #     redis_write(task_id, job)
 
 @app.get("/results/{filename}")
 def get_result(filename: str):

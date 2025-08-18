@@ -15,7 +15,7 @@ from rasterio.transform import Affine
 from realesrgan import RealESRGANer
 from basicsr.archs.rrdbnet_arch import RRDBNet
 
-from jobs import redis_read, redis_write
+from jobs import redis_read, redis_write, redis_delete
 
 
 
@@ -131,8 +131,6 @@ def run_super_resolution(upload_path,
                 buf = io.StringIO()
                 with torch.no_grad(), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
                     sr_bgr, _ = model.enhance(tile_bgr, outscale=scale)
-                    # GPU 사용 여부 확인
-                    # check_gpu_use(model)    
                 sr_rgb = cv2.cvtColor(sr_bgr, cv2.COLOR_BGR2RGB)
                 y2, x2 = y * scale, x * scale
                 out[y2:y2 + sr_rgb.shape[0], x2:x2 + sr_rgb.shape[1], :] = sr_rgb
@@ -160,15 +158,13 @@ def run_super_resolution(upload_path,
             os.remove(memmap_path)
 
         update_progress(100, status="done")
+        redis_delete(task_id)
 
         return os.path.basename(result_path)
 
     except Exception as e:
         if task_id:
-            job = redis_read(task_id)
-            job["progress"] = -1
-            job["status"] = "error"
-            redis_write(task_id, job)
+            redis_delete(task_id, ex=0)  # 즉시 삭제
         raise RuntimeError(f"[SR 오류] {str(e)}")
 
 # GPU 워커에서 사용하는 함수명 그대로 유지
