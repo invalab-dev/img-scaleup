@@ -7,10 +7,12 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/root/img-scaleup
+Environment=PATH=/root/img-scaleup/venv/bin
+Environment=AWS_CONFIG_FILE=/root/img-scaleup/.aws/config
 ExecStart=/root/img-scaleup/venv/bin/uvicorn main:app --host 0.0.0.0 --port 81
 TimeoutStopSec=30s
 Restart=on-failure
-Environment=PATH=/root/img-scaleup/venv/bin
+
 
 [Install]
 WantedBy=multi-user.target
