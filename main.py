@@ -66,7 +66,7 @@ async def upload(image: UploadFile = File(...)):
         logging.exception("file upload is failed")
         return JSONResponse(status_code=500, content={"success": False, "filename": filename})
     
-    sr_task.apply_async(args=[filename, input_path, tmp_dir, 4, 512, 64, False])
+    sr_task.apply_async(args=[filename, input_path, tmp_dir, 4, 512, 64, False], queue='gpu')
     
     redis_write(filename, {
         "progress": 0,
