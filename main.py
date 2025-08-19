@@ -51,14 +51,14 @@ s3_client = boto3.client(
 )
 
 @app.post("/upload")
-async def upload(file: UploadFile = File(...)):
+async def upload(image: UploadFile = File(...)):
     try:
-        filename = uuid.uuid4().hex + file.name
+        filename = uuid.uuid4().hex + image.name
         tmp_dir = os.path.join(BASE_DIR, "tmp")
         input_path = os.path.join(tmp_dir, "inputs", filename)
 
         with open(input_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            shutil.copyfileobj(image.file, buffer)
         
         s3_client.upload_file(input_path, "img-scaleup", f"inputs/{filename}")
 
