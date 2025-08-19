@@ -63,6 +63,17 @@ jobs:
             mv -f ./img-scaleup/img-scaleup-uvicorn.service /etc/systemd/system
             mv -f ./img-scaleup/img-scaleup.service /etc/systemd/system
 
+      - name: Download necessary packages
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd img-scaleup
+            source venv/bin/activate
+            pip install -r requirements.txt
+
       - name: Restart systemd service
         uses: appleboy/ssh-action@v1.0.3
         with:
