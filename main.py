@@ -53,7 +53,7 @@ s3_client = boto3.client(
 @app.post("/upload")
 async def upload(image: UploadFile = File(...)):
     try:
-        filename = uuid.uuid4().hex + image.name
+        filename = uuid.uuid4().hex + image.filename
         tmp_dir = os.path.join(BASE_DIR, "tmp")
         input_path = os.path.join(tmp_dir, "inputs", filename)
 
