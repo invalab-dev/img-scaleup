@@ -74,15 +74,14 @@ def run_super_resolution(
     tile_pad=64,
     use_memmap=False):
     try:
-        def update_progress(p, status=None):
+        def update_progress(p):
             p = max(0, min(100, int(p)))
             job = redis_read(filename)
             job["progress"] = p
-            job["status"] = status
-            print(f"update_progress: {filename} / {p} / {status}")
+            print(f"update_progress: {filename} / {p}")
             redis_write(filename, job)
 
-        update_progress(0, status="checking")
+        update_progress(0)
 
         img_bgr = load_image(input_path)
         H, W = img_bgr.shape[:2]
@@ -122,7 +121,7 @@ def run_super_resolution(
         total_tiles = len(windows)
         completed = 0
 
-        update_progress(5, status="processing")
+        update_progress(5)
 
         with tqdm(total=total_tiles, desc='SR 진행', dynamic_ncols=True) as pbar:
             for idx, (x, y, w, h) in enumerate(windows):
@@ -137,13 +136,10 @@ def run_super_resolution(
                     out.flush()
 
                 completed += 1
-                percent = math.ceil((completed / total_tiles) * 100)
                 log_msg = f"[{completed}/{total_tiles}] 타일 처리 완료"
                 tqdm.write(log_msg)
-                update_progress(percent, status="processing")
+                update_progress(math.min(99, math.ceil((completed / total_tiles) * 100)))
                 pbar.update(1)
-
-        update_progress(99, status="finishing")
 
         output_path = os.path.join(BASE_DIR, "outputs", filename)
 
@@ -155,13 +151,15 @@ def run_super_resolution(
         if use_memmap and os.path.exists(memmap_path):
             os.remove(memmap_path)
 
-        update_progress(100, status="done")
+        job = redis_read(filename)
+        job["output"] = output_path
+        redis_write(filename, job)
 
-        return output_path
+        update_progress(100)
 
     except Exception as e:
         if filename:
-            redis_delete(filename, ex=0)  # 즉시 삭제
+            redis_delete(filename, ex=0)  # 즉시 삭제해도 괜찮은가?
         raise RuntimeError(f"[SR 오류] {str(e)}")
 
 # GPU 워커에서 사용하는 함수명 그대로 유지
