@@ -141,7 +141,7 @@ def run_super_resolution(
                 update_progress(min(99, math.ceil((completed / total_tiles) * 100)))
                 pbar.update(1)
 
-        output_path = os.path.join(BASE_DIR, "outputs", filename)
+        output_path = os.path.join(BASE_DIR, "tmp", "outputs", filename)
 
         if filename.lower().endswith(".tif") or filename.lower().endswith(".tiff"):
             save_final_image_with_metadata(input_path, out, output_path)
