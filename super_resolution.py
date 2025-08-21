@@ -138,7 +138,7 @@ def run_super_resolution(
                 completed += 1
                 log_msg = f"[{completed}/{total_tiles}] 타일 처리 완료"
                 tqdm.write(log_msg)
-                update_progress(math.min(99, math.ceil((completed / total_tiles) * 100)))
+                update_progress(min(99, math.ceil((completed / total_tiles) * 100)))
                 pbar.update(1)
 
         output_path = os.path.join(BASE_DIR, "outputs", filename)
