@@ -121,7 +121,7 @@ def run_super_resolution(
         total_tiles = len(windows)
         completed = 0
 
-        update_progress(5)
+        # update_progress(5)
 
         with tqdm(total=total_tiles, desc='SR 진행', dynamic_ncols=True) as pbar:
             for idx, (x, y, w, h) in enumerate(windows):
