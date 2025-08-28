@@ -10,6 +10,7 @@ from tqdm import tqdm
 import math
 import rasterio
 from rasterio.transform import Affine
+from pathlib import Path
 
 from realesrgan import RealESRGANer
 from basicsr.archs.rrdbnet_arch import RRDBNet
@@ -66,7 +67,7 @@ def save_final_image_with_metadata(input_tif, result_array, output_tif):
                 dst.write(result_array[:, :, i], i + 1)
 
 def run_super_resolution(
-    filename,
+    id,
     input_path,
     tmp_dir,
     scale=4,
@@ -76,10 +77,10 @@ def run_super_resolution(
     try:
         def update_progress(p):
             p = max(0, min(100, int(p)))
-            job = redis_read(filename)
+            job = redis_read(id)
             job["progress"] = p
-            print(f"update_progress: {filename} / {p}")
-            redis_write(filename, job)
+            print(f"update_progress: {id} / {p}")
+            redis_write(id, job)
 
         update_progress(0)
 
@@ -121,8 +122,6 @@ def run_super_resolution(
         total_tiles = len(windows)
         completed = 0
 
-        # update_progress(5)
-
         with tqdm(total=total_tiles, desc='SR 진행', dynamic_ncols=True) as pbar:
             for idx, (x, y, w, h) in enumerate(windows):
                 tile_bgr = img_bgr[y:y + h, x:x + w]
@@ -141,7 +140,8 @@ def run_super_resolution(
                 update_progress(min(99, math.ceil((completed / total_tiles) * 100)))
                 pbar.update(1)
 
-        output_path = os.path.join(BASE_DIR, "tmp", "outputs", filename)
+        filename = f"{id}{Path(input_path).suffix}"
+        output_path = os.path.join(tmp_dir, "outputs", filename)
 
         if filename.lower().endswith(".tif") or filename.lower().endswith(".tiff"):
             save_final_image_with_metadata(input_path, out, output_path)
@@ -151,15 +151,13 @@ def run_super_resolution(
         if use_memmap and os.path.exists(memmap_path):
             os.remove(memmap_path)
 
-        job = redis_read(filename)
-        job["output"] = output_path
-        redis_write(filename, job)
+        job = redis_read(id)
+        job["output_path"] = output_path
+        redis_write(id, job)
 
         update_progress(100)
 
     except Exception as e:
-        if filename:
-            redis_delete(filename, ex=0)  # 즉시 삭제해도 괜찮은가?
         raise RuntimeError(f"[SR 오류] {str(e)}")
 
 # GPU 워커에서 사용하는 함수명 그대로 유지

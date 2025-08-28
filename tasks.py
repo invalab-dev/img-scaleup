@@ -17,11 +17,11 @@ celery.conf.update(
 
 
 @celery.task(bind=True)
-def sr_task(self, filename, input_path, tmp_dir, scale=4, tile_size=512, tile_pad=64, use_memmap=False):
+def sr_task(self, id, input_path, tmp_dir, scale=4, tile_size=512, tile_pad=64, use_memmap=False):
     # lazy import to avoid loading heavy libs at Celery master import time if desired
     from super_resolution import run_super_resolution
     
-    run_super_resolution(filename, input_path, tmp_dir, scale=scale, tile_size=tile_size, tile_pad=tile_pad, use_memmap=use_memmap)
+    run_super_resolution(id, input_path, tmp_dir, scale=scale, tile_size=tile_size, tile_pad=tile_pad, use_memmap=use_memmap)
     
     if(os.path.exists(input_path)):
         os.remove(input_path)

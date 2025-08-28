@@ -1,13 +1,11 @@
 import os
-import uuid
 import logging
 from datetime import datetime
 from threading import Lock, Timer
 from time import time
-import boto3
 from dotenv import load_dotenv
-import io
 import shutil
+from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Form, BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
@@ -42,10 +40,31 @@ app.add_middleware(
 )
 
 
-@app.post("/upload")
-async def upload(image: UploadFile = File(...)):
+@app.post("/start/{id}")
+async def start(id: str):
+
+    tmp_dir = os.path.join(BASE_DIR, "tmp")
+    for file in Path(os.path.join(tmp_dir, "inputs")).iterdir():
+        if file.is_file() and file.stem == id:
+            filename = file.name
+            break
+    if not filename:
+        return JSONResponse(status_code=500, content=f"{id} related file not found")
+
+    input_path = os.path.join(tmp_dir, "inputs", filename)
+    
+    sr_task.apply_async(args=[id, input_path, tmp_dir, 4, 512, 64, False], queue='gpu')
+    
+    redis_write(id, {
+        "progress": 0
+    })
+    
+    return JSONResponse(content="")
+
+@app.post("/save-file/{id}")
+async def save_file(id: str, image: UploadFile = File(...)):
     try:
-        filename = image.filename
+        filename = f"{id}{Path(image.filename).suffix}"
         tmp_dir = os.path.join(BASE_DIR, "tmp")
         input_path = os.path.join(tmp_dir, "inputs", filename)
 
@@ -53,35 +72,25 @@ async def upload(image: UploadFile = File(...)):
             shutil.copyfileobj(image.file, buffer)
         
     except Exception as e:
-        logging.exception("file upload is failed")
-        return JSONResponse(status_code=500, content={"filename": filename})
-    
-    sr_task.apply_async(args=[filename, input_path, tmp_dir, 4, 512, 64, False], queue='gpu')
-    
-    redis_write(filename, {
-        "progress": 0
-    })
-    
-    return JSONResponse(content={"filename": filename})
+        return JSONResponse(status_code=500, content=f"Failed to save file: {filename}")
 
-@app.get("/progress/{filename}")
-async def progress(filename: str):
-    job = redis_read(filename)
+@app.get("/progress/{id}")
+async def progress(id: str):
+    job = redis_read(id)
 
     if job is None:
-        logging.exception(f"{filename} is not valid or throws error in super_resolution.py")
+        logging.exception(f"{id} is not valid or throws error in super_resolution.py")
         return JSONResponse(status_code=500, content=job)
     else:
         return JSONResponse(content=job)
     
+@app.get("/download/{id}")
+async def download(id: str):
+    job = redis_read(id)
+    return FileResponse(job["output_path"])
 
-@app.get("/download/{filename}")
-async def download(filename: str):
-    job = redis_read(filename)
-    return FileResponse(job["output"])
-
-@app.get("/delete/{filename}")
-async def delete(filename: str):
-    job = redis_read(filename)
-    os.remove(job["output"])
-    redis_delete(filename, ex=0)
+@app.get("/delete/{id}")
+async def delete(id: str):
+    job = redis_read(id)
+    os.remove(job["output_path"])
+    redis_delete(id, ex=0)
