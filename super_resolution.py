@@ -19,6 +19,8 @@ from jobs import redis_read, redis_write, redis_delete
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMP_DIR = os.path.join(BASE_DIR, "tmp")
+
 MODEL_PATH = os.path.join(BASE_DIR, "weights", "RealESRGAN_x4plus.pth")
 
 def load_image(path, max_retries=10, delay=0.5):
@@ -68,13 +70,12 @@ def save_final_image_with_metadata(input_tif, result_array, output_tif):
 
 def run_super_resolution(
     id,
-    input_path,
-    tmp_dir,
     scale=4,
     tile_size=512,
     tile_pad=64,
     use_memmap=False):
     try:
+        input_path = next(Path(os.path.join(TEMP_DIR, id, "inputs")).iterdir())
         img_bgr = load_image(input_path)
         H, W = img_bgr.shape[:2]
         H2, W2 = int(H * scale), int(W * scale)
@@ -95,7 +96,7 @@ def run_super_resolution(
         )
 
         if use_memmap:
-            memmap_path = os.path.join(tmp_dir, 'temp_memmap.dat')
+            memmap_path = os.path.join(TEMP_DIR, id, 'temp_memmap.dat')
             if os.path.exists(memmap_path):
                 os.remove(memmap_path)
             out = np.memmap(memmap_path, dtype='uint8', mode='w+', shape=(H2, W2, 3))
@@ -133,10 +134,11 @@ def run_super_resolution(
                 redis_write(id, job)
                 pbar.update(1)
 
-        filename = f"{id}{Path(input_path).suffix}"
-        output_path = os.path.join(tmp_dir, "outputs", filename)
+        dir = os.path.join(TEMP_DIR, id, "outputs")
+        os.makedirs(dir, exist_ok=True)
+        output_path = os.path.join(dir, input_path.name)
 
-        if filename.lower().endswith(".tif") or filename.lower().endswith(".tiff"):
+        if output_path.suffix.lower().endswith(".tif") or output_path.suffix.lower().endswith(".tiff"):
             save_final_image_with_metadata(input_path, out, output_path)
         else:
             save_final_image(out, output_path)

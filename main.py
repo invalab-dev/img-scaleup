@@ -19,6 +19,7 @@ from tasks import sr_task
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMP_DIR = os.path.join(BASE_DIR, "tmp")
 
 app = FastAPI()
 
@@ -43,36 +44,27 @@ app.add_middleware(
 
 @app.post("/start")
 async def start(id: str):
-    tmp_dir = os.path.join(BASE_DIR, "tmp")
-    for file in Path(os.path.join(tmp_dir, "inputs")).iterdir():
-        if file.is_file() and file.stem == id:
-            filename = file.name
-            break
-    if not filename:
-        return JSONResponse(status_code=500, content=f"{id} related file not found")
-
-    input_path = os.path.join(tmp_dir, "inputs", filename)
-        
     redis_write(id, {
-        "progress": 0,
+        "progress": 0, 
         "started_time": datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),
-        "completed_time": None,
-        "output_path": None
+        "completed_time": None
     })
 
-    sr_task.apply_async(args=[id, input_path, tmp_dir, 4, 512, 64, False], queue='gpu')
+    sr_task.apply_async(args=[id, 4, 512, 64, False], queue='gpu')
     
     return JSONResponse(content="")
 
 @app.post("/save-file")
 async def save_file(id: str, filename: str, request: Request):
     try:
-        tmp_dir = os.path.join(BASE_DIR, "tmp")
-        input_path = os.path.join(tmp_dir, "inputs", filename)
+        dir = os.path.join(TEMP_DIR, id, "inputs")
+        os.makedirs(dir, exist_ok=True)
+        input_path = os.path.join(dir, filename)
 
-        with open(input_path, "wb") as buffer:
-            shutil.copyfileobj(image.file, buffer)
-        
+        with open(input_path, "wb") as f:
+            async for chunk in request.stream():
+                f.write(chunk)
+
     except Exception as e:
         return JSONResponse(status_code=500, content=f"Failed to save file: {filename}")
 
@@ -87,6 +79,7 @@ async def progress(id: str):
         status_code=500, 
         content={
             "progress": job["progress"],
+            "started_time": job["started_time"],
             "completed_time": job["completed_time"],
         }
     )
@@ -95,8 +88,10 @@ async def progress(id: str):
 async def download(id: str):
     job = redis_read(id)
 
+    output_path = Path(os.path.join(TEMP_DIR, id, "outputs")).iterdir()[0]
+
     def iter_file():
-        with open(job["output_path"], mode="rb") as f:
+        with open(output_path, mode="rb") as f:
             while chunk := f.read(1024 * 1024):
                 yield chunk
 
@@ -104,6 +99,6 @@ async def download(id: str):
 
 @app.get("/delete")
 async def delete(id: str):
-    job = redis_read(id)
-    os.remove(job["output_path"])
+    shutil.rmtree(os.path.join(TEMP_DIR, id, "inputs"))
+    shutil.rmtree(os.path.join(TEMP_DIR, id, "outputs"))
     redis_delete(id, ex=0)
