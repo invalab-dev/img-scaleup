@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from threading import Lock, Timer
 from time import time
 from dotenv import load_dotenv
@@ -54,7 +55,8 @@ async def start(id: str):
         
     redis_write(id, {
         "progress": 0,
-        "complete_time": None,
+        "started_time": datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),
+        "completed_time": None,
         "output_path": None
     })
 
@@ -86,14 +88,20 @@ async def progress(id: str):
         status_code=500, 
         content={
             "progress": job["progress"],
-            "complete_time": job["complete_time"],
+            "completed_time": job["completed_time"],
         }
     )
     
 @app.get("/download/{id}")
 async def download(id: str):
     job = redis_read(id)
-    return FileResponse(job["output_path"])
+
+    def iter_file():
+        with open(job["output_path"], mode="rb") as f:
+            while chunk := f.read(1024 * 1024):
+                yield chunk
+
+    return StreamingResponse(iter_file(), media_type="application/octet-stream")
 
 @app.get("/delete/{id}")
 async def delete(id: str):

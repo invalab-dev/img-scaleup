@@ -27,7 +27,7 @@ def sr_task(self, id, input_path, tmp_dir, scale=4, tile_size=512, tile_pad=64, 
 
     job = redis_read(id)
     job["progress"] = 100
-    job["complete_time"] = datetime.now(ZoneInfo("Asia/Seoul")).isoformat()
+    job["completed_time"] = datetime.now(ZoneInfo("Asia/Seoul")).isoformat()
     job["output_path"] = output_path
     redis_write(id, job)
 
