@@ -75,15 +75,6 @@ def run_super_resolution(
     tile_pad=64,
     use_memmap=False):
     try:
-        def update_progress(p):
-            p = max(0, min(100, int(p)))
-            job = redis_read(id)
-            job["progress"] = p
-            print(f"update_progress: {id} / {p}")
-            redis_write(id, job)
-
-        update_progress(0)
-
         img_bgr = load_image(input_path)
         H, W = img_bgr.shape[:2]
         H2, W2 = int(H * scale), int(W * scale)
@@ -137,7 +128,9 @@ def run_super_resolution(
                 completed += 1
                 log_msg = f"[{completed}/{total_tiles}] 타일 처리 완료"
                 tqdm.write(log_msg)
-                update_progress(min(99, math.ceil((completed / total_tiles) * 100)))
+                job = redis_read(id)
+                job["progress"] = min(99, math.ceil((completed / total_tiles) * 100))
+                redis_write(id, job)
                 pbar.update(1)
 
         filename = f"{id}{Path(input_path).suffix}"
@@ -151,11 +144,7 @@ def run_super_resolution(
         if use_memmap and os.path.exists(memmap_path):
             os.remove(memmap_path)
 
-        job = redis_read(id)
-        job["output_path"] = output_path
-        redis_write(id, job)
-
-        update_progress(100)
+        return output_path
 
     except Exception as e:
         raise RuntimeError(f"[SR 오류] {str(e)}")

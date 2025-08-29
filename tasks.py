@@ -1,6 +1,8 @@
 from celery import Celery
 import boto3
 import os
+import datetime
+from zoneinfo import ZoneInfo
 from jobs import redis_delete, redis_read, redis_write 
 
 broker = 'redis://localhost:6379/0'          # 또는 'redis://:PASSWORD@localhost:6379/0'
@@ -20,8 +22,14 @@ celery.conf.update(
 def sr_task(self, id, input_path, tmp_dir, scale=4, tile_size=512, tile_pad=64, use_memmap=False):
     # lazy import to avoid loading heavy libs at Celery master import time if desired
     from super_resolution import run_super_resolution
-    
-    run_super_resolution(id, input_path, tmp_dir, scale=scale, tile_size=tile_size, tile_pad=tile_pad, use_memmap=use_memmap)
-    
+
+    output_path = run_super_resolution(id, input_path, tmp_dir, scale=scale, tile_size=tile_size, tile_pad=tile_pad, use_memmap=use_memmap)
+
+    job = redis_read(id)
+    job["progress"] = 100
+    job["complete_time"] = datetime.now(ZoneInfo("Asia/Seoul")).isoformat()
+    job["output_path"] = output_path
+    redis_write(id, job)
+
     if(os.path.exists(input_path)):
         os.remove(input_path)

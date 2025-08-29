@@ -42,7 +42,6 @@ app.add_middleware(
 
 @app.post("/start/{id}")
 async def start(id: str):
-
     tmp_dir = os.path.join(BASE_DIR, "tmp")
     for file in Path(os.path.join(tmp_dir, "inputs")).iterdir():
         if file.is_file() and file.stem == id:
@@ -52,12 +51,14 @@ async def start(id: str):
         return JSONResponse(status_code=500, content=f"{id} related file not found")
 
     input_path = os.path.join(tmp_dir, "inputs", filename)
-    
-    sr_task.apply_async(args=[id, input_path, tmp_dir, 4, 512, 64, False], queue='gpu')
-    
+        
     redis_write(id, {
-        "progress": 0
+        "progress": 0,
+        "complete_time": None,
+        "output_path": None
     })
+
+    sr_task.apply_async(args=[id, input_path, tmp_dir, 4, 512, 64, False], queue='gpu')
     
     return JSONResponse(content="")
 
@@ -80,9 +81,14 @@ async def progress(id: str):
 
     if job is None:
         logging.exception(f"{id} is not valid or throws error in super_resolution.py")
-        return JSONResponse(status_code=500, content=job)
-    else:
-        return JSONResponse(content=job)
+
+    return JSONResponse(
+        status_code=500, 
+        content={
+            "progress": job["progress"],
+            "complete_time": job["complete_time"],
+        }
+    )
     
 @app.get("/download/{id}")
 async def download(id: str):
