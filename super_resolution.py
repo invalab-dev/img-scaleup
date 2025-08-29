@@ -138,7 +138,7 @@ def run_super_resolution(
         os.makedirs(dir, exist_ok=True)
         output_path = os.path.join(dir, input_path.name)
 
-        if output_path.suffix.lower().endswith(".tif") or output_path.suffix.lower().endswith(".tiff"):
+        if output_path.lower().endswith(".tif") or output_path.lower().endswith(".tiff"):
             save_final_image_with_metadata(input_path, out, output_path)
         else:
             save_final_image(out, output_path)
