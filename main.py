@@ -73,10 +73,10 @@ async def progress(id: str):
     job = redis_read(id)
 
     if job is None:
-        logging.exception(f"{id} is not valid or throws error in super_resolution.py")
+        return JSONResponse(status_code=500, content=f"{id} is not valid or throws error in super_resolution.py")
 
     return JSONResponse(
-        status_code=500, 
+        status_code=200, 
         content={
             "progress": job["progress"],
             "started_time": job["started_time"],
