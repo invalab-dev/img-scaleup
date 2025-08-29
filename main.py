@@ -41,7 +41,7 @@ app.add_middleware(
 )
 
 
-@app.post("/start/{id}")
+@app.post("/start")
 async def start(id: str):
     tmp_dir = os.path.join(BASE_DIR, "tmp")
     for file in Path(os.path.join(tmp_dir, "inputs")).iterdir():
@@ -64,10 +64,9 @@ async def start(id: str):
     
     return JSONResponse(content="")
 
-@app.post("/save-file/{id}")
-async def save_file(id: str, image: UploadFile = File(...)):
+@app.post("/save-file")
+async def save_file(id: str, filename: str, request: Request):
     try:
-        filename = f"{id}{Path(image.filename).suffix}"
         tmp_dir = os.path.join(BASE_DIR, "tmp")
         input_path = os.path.join(tmp_dir, "inputs", filename)
 
@@ -77,7 +76,7 @@ async def save_file(id: str, image: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(status_code=500, content=f"Failed to save file: {filename}")
 
-@app.get("/progress/{id}")
+@app.get("/progress")
 async def progress(id: str):
     job = redis_read(id)
 
@@ -92,7 +91,7 @@ async def progress(id: str):
         }
     )
     
-@app.get("/download/{id}")
+@app.get("/download")
 async def download(id: str):
     job = redis_read(id)
 
@@ -103,7 +102,7 @@ async def download(id: str):
 
     return StreamingResponse(iter_file(), media_type="application/octet-stream")
 
-@app.get("/delete/{id}")
+@app.get("/delete")
 async def delete(id: str):
     job = redis_read(id)
     os.remove(job["output_path"])
