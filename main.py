@@ -86,9 +86,7 @@ async def progress(id: str):
     
 @app.get("/download")
 async def download(id: str):
-    job = redis_read(id)
-
-    output_path = Path(os.path.join(TEMP_DIR, id, "outputs")).iterdir()[0]
+    output_path = next(Path(os.path.join(TEMP_DIR, id, "outputs")).iterdir())
 
     def iter_file():
         with open(output_path, mode="rb") as f:
