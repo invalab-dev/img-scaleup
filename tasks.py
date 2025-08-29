@@ -1,7 +1,7 @@
 from celery import Celery
 import boto3
 import os
-import datetime
+from datetime import datetime 
 from zoneinfo import ZoneInfo
 from jobs import redis_delete, redis_read, redis_write 
 
